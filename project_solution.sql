@@ -845,4 +845,270 @@ union all
 select 
     'sellers', 
     (select count(*) from stage.sellers), 
-    (select count(*) from target.sellers_dim);                                                                                                                                                                                                                                                                                                                                                                                          
+    (select count(*) from target.sellers_dim);   
+    
+-- create control table
+create table if not exists target.etl_control_log (
+    log_id serial primary key,
+    procedure_name varchar(100),
+    load_status varchar(20),       
+    records_inserted int,
+    start_time timestamp,
+    end_time timestamp,
+    duration_seconds numeric
+);   
+
+-- create procedure for loading customer table
+create or replace procedure target.load_customer_dim()
+language plpgsql
+as '
+declare
+    v_start_time timestamp;
+    v_end_time timestamp;
+    v_rows_before int;
+    v_rows_after int;
+    v_inserted int;
+begin
+    v_start_time := clock_timestamp();
+    select count(*) into v_rows_before from target.customer_dim;
+
+    merge into target.customer_dim t
+    using stage.customer s
+    on t.customer_id = s.customer_id
+    when matched then
+    update set
+    customer_unique_id = s.customer_unique_id,
+    customer_zip_code_prefix = s.customer_zip_code_prefix,
+    customer_city = s.customer_city,
+    customer_state = s.customer_state
+    when not matched then
+    insert (customer_id, customer_unique_id, customer_zip_code_prefix, customer_city, customer_state)
+    values (s.customer_id, s.customer_unique_id, s.customer_zip_code_prefix, s.customer_city, s.customer_state);
+
+    v_end_time := clock_timestamp();
+    select count(*) into v_rows_after from target.customer_dim;
+    v_inserted := v_rows_after - v_rows_before;
+
+    insert into target.etl_control_log (procedure_name, load_status, records_inserted, start_time, end_time, duration_seconds)
+    values (''load_customer_dim'', ''SUCCESS'', v_inserted, v_start_time, v_end_time, extract(epoch from (v_end_time - v_start_time)));
+
+    commit;
+exception when others then
+    insert into target.etl_control_log (procedure_name, load_status, records_inserted, start_time, end_time, duration_seconds)
+    values (''load_customer_dim'', ''FAILED'', 0, v_start_time, clock_timestamp(), 0);
+    raise;
+end;
+';  
+
+-- create procedure for loading products table
+create or replace procedure target.load_products_dim()
+language plpgsql
+as '
+declare
+    v_start_time timestamp;
+    v_end_time timestamp;
+    v_rows_before int;
+    v_rows_after int;
+    v_inserted int;
+begin
+    v_start_time := clock_timestamp();
+    select count(*) into v_rows_before from target.products_dim;
+
+    merge into target.products_dim t
+    using (
+        select 
+            p.product_id, 
+            coalesce(tr.product_category_name_english, p.product_category_name) as product_category_name, 
+            p.product_name_lenght, 
+            p.product_description_lenght, 
+            p.product_photos_qty, 
+            p.product_weight_g, 
+            p.product_length_cm, 
+            p.product_height_cm, 
+            p.product_width_cm
+        from stage.products p
+        left join stage.product_category_name_translation tr 
+            on p.product_category_name = tr.product_category_name
+    ) s
+    on t.product_id = s.product_id
+    when matched then
+        update set 
+            product_category_name = s.product_category_name,
+            product_name_lenght = s.product_name_lenght,
+            product_description_lenght = s.product_description_lenght,
+            product_photos_qty = s.product_photos_qty,
+            product_weight_g = s.product_weight_g,
+            product_length_cm = s.product_length_cm,
+            product_height_cm = s.product_height_cm,
+            product_width_cm = s.product_width_cm
+    when not matched then
+        insert (product_id, product_category_name, product_name_lenght, product_description_lenght, product_photos_qty, product_weight_g, product_length_cm, product_height_cm, product_width_cm)
+        values (s.product_id, s.product_category_name, s.product_name_lenght, s.product_description_lenght, s.product_photos_qty, s.product_weight_g, s.product_length_cm, s.product_height_cm, s.product_width_cm);
+        
+    v_end_time := clock_timestamp();
+    select count(*) into v_rows_after from target.products_dim;
+    v_inserted := v_rows_after - v_rows_before;
+
+    insert into target.etl_control_log (procedure_name, load_status, records_inserted, start_time, end_time, duration_seconds)
+    values (''load_products_dim'', ''SUCCESS'', v_inserted, v_start_time, v_end_time, extract(epoch from (v_end_time - v_start_time)));
+
+    commit;
+exception when others then
+    insert into target.etl_control_log (procedure_name, load_status, records_inserted, start_time, end_time, duration_seconds)
+    values (''load_products_dim'', ''FAILED'', 0, v_start_time, clock_timestamp(), 0);
+    raise;
+end;
+';  
+   
+-- create procedure for loading sellers table
+create or replace procedure target.load_sellers_dim()
+language plpgsql
+as '
+declare
+    v_start_time timestamp;
+    v_end_time timestamp;
+    v_rows_before int;
+    v_rows_after int;
+    v_inserted int;
+begin
+    v_start_time := clock_timestamp();
+    select count(*) into v_rows_before from target.sellers_dim;
+
+    merge into target.sellers_dim t
+    using stage.sellers s
+    on t.seller_id = s.seller_id
+    when matched then
+        update set 
+            seller_zip_code_prefix = s.seller_zip_code_prefix,
+            seller_city = s.seller_city,
+            seller_state = s.seller_state
+    when not matched then
+        insert (seller_id, seller_zip_code_prefix, seller_city, seller_state)
+        values (s.seller_id, s.seller_zip_code_prefix, s.seller_city, s.seller_state);
+        
+    v_end_time := clock_timestamp();
+    select count(*) into v_rows_after from target.sellers_dim;
+    v_inserted := v_rows_after - v_rows_before;
+
+    insert into target.etl_control_log (procedure_name, load_status, records_inserted, start_time, end_time, duration_seconds)
+    values (''load_sellers_dim'', ''SUCCESS'', v_inserted, v_start_time, v_end_time, extract(epoch from (v_end_time - v_start_time)));
+
+    commit;
+exception when others then
+    insert into target.etl_control_log (procedure_name, load_status, records_inserted, start_time, end_time, duration_seconds)
+    values (''load_sellers_dim'', ''FAILED'', 0, v_start_time, clock_timestamp(), 0);
+    raise;
+end;
+';
+
+-- create procedure for loading geolocation table
+create or replace procedure target.load_geolocation_dim()
+language plpgsql
+as '
+declare
+    v_start_time timestamp;
+    v_end_time timestamp;
+    v_rows_before int;
+    v_rows_after int;
+    v_inserted int;
+begin
+    v_start_time := clock_timestamp();
+    select count(*) into v_rows_before from target.geolocation_dim;
+
+    merge into target.geolocation_dim t
+    using (
+        select distinct on (geolocation_zip_code_prefix, geolocation_lat, geolocation_lng) 
+               geolocation_zip_code_prefix, 
+               geolocation_lat, 
+               geolocation_lng, 
+               geolocation_city, 
+               geolocation_state
+        from stage.geolocation
+        order by geolocation_zip_code_prefix, geolocation_lat, geolocation_lng
+    ) s
+    on t.geolocation_zip_code_prefix = s.geolocation_zip_code_prefix 
+       and t.geolocation_lat = s.geolocation_lat 
+       and t.geolocation_lng = s.geolocation_lng
+    when matched then
+        update set 
+            geolocation_city = s.geolocation_city,
+            geolocation_state = s.geolocation_state
+    when not matched then
+        insert (geolocation_zip_code_prefix, geolocation_lat, geolocation_lng, geolocation_city, geolocation_state)
+        values (s.geolocation_zip_code_prefix, s.geolocation_lat, s.geolocation_lng, s.geolocation_city, s.geolocation_state);
+        
+    v_end_time := clock_timestamp();
+    select count(*) into v_rows_after from target.geolocation_dim;
+    v_inserted := v_rows_after - v_rows_before;
+
+    insert into target.etl_control_log (procedure_name, load_status, records_inserted, start_time, end_time, duration_seconds)
+    values (''load_geolocation_dim'', ''SUCCESS'', v_inserted, v_start_time, v_end_time, extract(epoch from (v_end_time - v_start_time)));
+
+    commit;
+exception when others then
+    insert into target.etl_control_log (procedure_name, load_status, records_inserted, start_time, end_time, duration_seconds)
+    values (''load_geolocation_dim'', ''FAILED'', 0, v_start_time, clock_timestamp(), 0);
+    raise;
+end;
+';
+
+-- create procedure for loading order_items table
+create or replace procedure target.load_order_items_fact()
+language plpgsql
+as '
+declare
+    v_start_time timestamp;
+    v_end_time timestamp;
+    v_rows_before int;
+    v_rows_after int;
+    v_inserted int;
+begin
+    v_start_time := clock_timestamp();
+    select count(*) into v_rows_before from target.order_items_fact;
+
+    merge into target.order_items_fact t
+    using (
+        select 
+            oi.order_id,
+            oi.order_item_id,
+            oi.product_id,
+            oi.seller_id,
+            oi.shipping_limit_date,
+            oi.price,
+            oi.freight_value,
+            cd.customer_key,
+            pd.products_key,
+            sd.sellers_key
+        from stage.order_items oi
+        join stage.orders o on oi.order_id = o.order_id
+        left join target.customer_dim cd on o.customer_id = cd.customer_id
+        left join target.products_dim pd on oi.product_id = pd.product_id
+        left join target.sellers_dim sd on oi.seller_id = sd.seller_id
+    ) s
+    on t.order_id = s.order_id and t.order_item_id = s.order_item_id
+    when matched then
+        update set 
+            shipping_limit_date = s.shipping_limit_date,
+            price = s.price,
+            freight_value = s.freight_value,
+            customer_key = s.customer_key,
+            products_key = s.products_key,
+            sellers_key = s.sellers_key
+    when not matched then
+        insert (order_id, order_item_id, product_id, seller_id, shipping_limit_date, price, freight_value, customer_key, products_key, sellers_key)
+        values (s.order_id, s.order_item_id, s.product_id, s.seller_id, s.shipping_limit_date, s.price, s.freight_value, s.customer_key, s.products_key, s.sellers_key);
+        
+    v_end_time := clock_timestamp();
+    select count(*) into v_rows_after from target.order_items_fact;
+    v_inserted := v_rows_after - v_rows_before;
+
+    insert into target.etl_control_log (procedure_name, load_status, records_inserted, start_time, end_time, duration_seconds)
+    values (''load_order_items_fact'', ''SUCCESS'', v_inserted, v_start_time, v_end_time, extract(epoch from (v_end_time - v_start_time)));
+
+    commit;
+exception when others then
+    insert into target.etl_control_log (procedure_name, load_status, records_inserted, start_time, end_time, duration_seconds)
+    values (''load_order_items_fact'', ''FAILED'', 0, v_start_time, clock_timestamp(), 0);
+    raise;
+end;
+';                                                                                                                                                                                                                                                                                                                                                                                  
