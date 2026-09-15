@@ -1,5 +1,7 @@
 # final_project
 End-to-end PostgreSQL data engineering pipeline and star schema for the Olist dataset. Includes CSV staging, PL/SQL stored procedures with automated error logging, incremental loads, query performance indexing, and advanced analytical SQL window functions.
+# data source I used
+https://www.kaggle.com/datasets/olistbr/brazilian-ecommerce
 # Olist Data Warehouse & ETL Project
 
 An end-to-end PostgreSQL data engineering pipeline and star schema architecture built for the Olist e-commerce dataset. 
