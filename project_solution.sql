@@ -891,8 +891,6 @@ begin
 
     insert into target.etl_control_log (procedure_name, load_status, records_inserted, start_time, end_time, duration_seconds)
     values (''load_customer_dim'', ''SUCCESS'', v_inserted, v_start_time, v_end_time, extract(epoch from (v_end_time - v_start_time)));
-
-    commit;
 exception when others then
     insert into target.etl_control_log (procedure_name, load_status, records_inserted, start_time, end_time, duration_seconds)
     values (''load_customer_dim'', ''FAILED'', 0, v_start_time, clock_timestamp(), 0);
@@ -951,8 +949,6 @@ begin
 
     insert into target.etl_control_log (procedure_name, load_status, records_inserted, start_time, end_time, duration_seconds)
     values (''load_products_dim'', ''SUCCESS'', v_inserted, v_start_time, v_end_time, extract(epoch from (v_end_time - v_start_time)));
-
-    commit;
 exception when others then
     insert into target.etl_control_log (procedure_name, load_status, records_inserted, start_time, end_time, duration_seconds)
     values (''load_products_dim'', ''FAILED'', 0, v_start_time, clock_timestamp(), 0);
@@ -992,8 +988,6 @@ begin
 
     insert into target.etl_control_log (procedure_name, load_status, records_inserted, start_time, end_time, duration_seconds)
     values (''load_sellers_dim'', ''SUCCESS'', v_inserted, v_start_time, v_end_time, extract(epoch from (v_end_time - v_start_time)));
-
-    commit;
 exception when others then
     insert into target.etl_control_log (procedure_name, load_status, records_inserted, start_time, end_time, duration_seconds)
     values (''load_sellers_dim'', ''FAILED'', 0, v_start_time, clock_timestamp(), 0);
@@ -1043,8 +1037,6 @@ begin
 
     insert into target.etl_control_log (procedure_name, load_status, records_inserted, start_time, end_time, duration_seconds)
     values (''load_geolocation_dim'', ''SUCCESS'', v_inserted, v_start_time, v_end_time, extract(epoch from (v_end_time - v_start_time)));
-
-    commit;
 exception when others then
     insert into target.etl_control_log (procedure_name, load_status, records_inserted, start_time, end_time, duration_seconds)
     values (''load_geolocation_dim'', ''FAILED'', 0, v_start_time, clock_timestamp(), 0);
@@ -1104,11 +1096,41 @@ begin
 
     insert into target.etl_control_log (procedure_name, load_status, records_inserted, start_time, end_time, duration_seconds)
     values (''load_order_items_fact'', ''SUCCESS'', v_inserted, v_start_time, v_end_time, extract(epoch from (v_end_time - v_start_time)));
-
-    commit;
 exception when others then
     insert into target.etl_control_log (procedure_name, load_status, records_inserted, start_time, end_time, duration_seconds)
     values (''load_order_items_fact'', ''FAILED'', 0, v_start_time, clock_timestamp(), 0);
     raise;
 end;
-';                                                                                                                                                                                                                                                                                                                                                                                  
+';
+
+call target.load_customer_dim();
+call target.load_products_dim();
+call target.load_sellers_dim();
+call target.load_geolocation_dim();
+call target.load_order_items_fact();
+
+select * from target.etl_control_log; 
+
+--clear out target tables (fact table first because of foreign keys)
+truncate table target.order_items_fact cascade;
+truncate table target.customer_dim cascade;
+truncate table target.products_dim cascade;
+truncate table target.sellers_dim cascade;
+truncate table target.geolocation_dim cascade;   
+
+--run your procedures again from a clean slate
+call target.load_customer_dim();
+call target.load_products_dim();
+call target.load_sellers_dim();
+call target.load_geolocation_dim();
+call target.load_order_items_fact();  
+
+select * from target.etl_control_log order by log_id desc;  
+--inserting new data
+insert into stage.customer (customer_id, customer_unique_id, customer_zip_code_prefix, customer_city, customer_state)
+values ('test_id_999', 'unique_id_999', '12345', 'Muscat', 'MS'); 
+
+call target.load_customer_dim(); 
+select * from target.etl_control_log order by log_id desc limit 1;  
+
+                                                                                                                                                                                                                                                                                                                                                                   
